@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from sqlalchemy import create_engine, Column, Integer, String, ForeignKey, DateTime, UniqueConstraint, Boolean, Date, Unicode
+from sqlalchemy import create_engine, Column, Integer, ForeignKey, DateTime, UniqueConstraint, Boolean, Date, Unicode, Time
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, backref
 from sqlalchemy.schema import Index
@@ -20,15 +20,38 @@ MOMENTS = [('colazione', datetime.time(0)),
            ('pranzo', datetime.time(11)),
            ('cena', datetime.time(15))]
 
+class Circle(Base):
+    __tablename__ = 'circles'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(Unicode, unique=True, nullable=False)
+
+class Moment(Base):
+    __tablename__ = 'moments'
+    __table_args__ = (
+        UniqueConstraint('circle_id', 'name'),
+        UniqueConstraint('circle_id', 'time'),
+        )
+
+    id = Column(Integer, primary_key=True)
+    circle_id = Column(Integer, ForeignKey(Circle.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=True)
+    name = Column(Unicode)
+    time = Column(Time)
+
+    circle = relationship(Circle, backref=backref("moments", order_by="Moment.time"))
+
 class User(Base):
     __tablename__ = 'users'
 
     id = Column(Integer, primary_key=True)
-    tid = Column(Integer, unique=True)
-    first_name = Column(String)
-    last_name = Column(String)
-    username = Column(String)
+    circle_id = Column(Integer, ForeignKey(Circle.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=True)
+    tid = Column(Integer, unique=True, nullable=False)
+    first_name = Column(Unicode)
+    last_name = Column(Unicode)
+    username = Column(Unicode)
     enabled = Column(Boolean, nullable=False, default=True)
+
+    circle = relationship(Circle, backref="members")
 
     def add_statement(self, phase, time, value):
         statement = Statement()
@@ -71,12 +94,14 @@ class User(Base):
 class Phase(Base):
     __tablename__ = 'phases'
     __table_args__ = (
-        UniqueConstraint('date', 'moment'),
+        UniqueConstraint('date', 'moment_id'),
         )
 
     id = Column(Integer, primary_key=True)
     date = Column(Date, nullable=False)
-    moment = Column(Integer, nullable=False)
+    moment_id = Column(Integer, ForeignKey(Moment.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
+
+    moment = relationship(Moment)
 
     def get_statements(self):
         # FIXME - Fix the following code and use it instead of the bad hack
@@ -101,10 +126,12 @@ class Phase(Base):
         return MOMENTS[self.moment][0] + ' ' + self.date.strftime('%d/%m/%Y')
 
     @classmethod
-    def get_current(cls, session, when=None):
+    def get_current(cls, circle, when=None):
         if when is None:
             when = datetime.datetime.now()
         moment = None
+        for mom in circle.moments:
+            pass
         for mom_idx, (mom_name, mom_time) in enumerate(MOMENTS):
             if mom_time <= when.time():
                 moment = mom_idx
