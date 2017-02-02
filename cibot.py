@@ -4,20 +4,14 @@
 from telegram.ext import Updater, CommandHandler
 import logging
 
-from data import Session, create_db, User
+from data import SessionGen, create_db, User, Phase, Statement
 
 def handle_start(bot, update):
     with SessionGen(True) as session:
-        user = update.message.user
-        db_user = session.query(User).filter(User.tid == user.id).first()
-        if db_user is None:
-            db_user = User()
-            db_user.tid = user.id
-            db_user.first_name = user.first_name
-            db_user.last_name = user.last_name
-            db_user.username = user.username
-            session.add(db_user)
-        bot.send_message(chat_id=update.message.chat_id, text="Hello {} {}!".format(db_user.first_name, db_user.last_name))
+        db_user = User.get_from_telegram_user(session, update.message.from_user)
+        phase = Phase.get_current(session)
+        bot.send_message(chat_id=update.message.chat_id, text="Hello {}!".format(db_user.get_pretty_name()))
+        bot.send_message(chat_id=update.message.chat_id, text="Now is {}".format(phase.get_pretty_name()))
 
 def main():
     create_db()
