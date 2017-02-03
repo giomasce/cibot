@@ -49,6 +49,14 @@ class Circle(Base):
 
         return phase
 
+    def get_current_statements(self, when=None):
+        if when is None:
+            when = datetime.datetime.now()
+        phase = self.get_current_phase(when=when)
+        session = object_session(self)
+        statements = session.query(Statement).join(User).filter(User.circle == self).filter(Statement.phase == phase).all()
+        return statements
+
 class Moment(Base):
     __tablename__ = 'moments'
     __table_args__ = (
@@ -73,31 +81,32 @@ class User(Base):
     last_name = Column(Unicode)
     username = Column(Unicode)
     enabled = Column(Boolean, nullable=False, default=True)
+    default_choice = Column(Boolean, nullable=True)
 
     circle = relationship(Circle, backref="members")
 
-    def add_statement(self, phase, time, value):
-        statement = Statement()
-        statement.user = self
-        statement.phase = phase
-        statement.time = time
-        statement.value = value
-        object_session(self).add(statement)
-
-    def get_last_statement(self, phase):
-        return object_session(self).query(Statement). \
-            filter(Statement.phase == phase). \
-            filter(Statement.user == self). \
-            order_by(desc(Statement.time)). \
-            first()
-
-    def get_statements_num(self, phase):
-        return object_session(self).query(Statement). \
-            filter(Statement.phase == phase). \
-            filter(Statement.user == self).count()
-
     def get_pretty_name(self):
         return self.first_name + ' ' + self.last_name
+
+    def get_current_statement(self, when=None, for_update=False):
+        if when is None:
+            when = datetime.datetime.now()
+        if self.circle is None:
+            return None
+        phase = self.circle.get_current_phase(when=when)
+        session = object_session(self)
+        try:
+            statement = session.query(Statement).filter(Statement.user == self).filter(Statement.phase == phase).one()
+        except NoResultFound:
+            statement = Statement()
+            statement.user = self
+            statement.phase = phase
+            session.add(statement)
+
+        if for_update:
+            statement.time = when
+
+        return statement
 
     @classmethod
     def get_from_telegram_user(cls, session, tg_user):
@@ -126,32 +135,13 @@ class Phase(Base):
 
     moment = relationship(Moment)
 
-    def get_statements(self):
-        # FIXME - Fix the following code and use it instead of the bad hack
-        #inner_max_time = func.max(Statement.time).alias()
-        #inner_statement = aliased(Statement)
-        #max_query = object_session(self).query(inner_statement, inner_max_time).group_by(inner_statement.user).subquery()
-        #outer_statement = aliased(Statement)
-        #print >> sys.stderr, max_query.c
-        #return object_session(self).query(outer_statement).join((max_query, max_query.c.inner_max_time == outer_statement.time))
-
-        statements = object_session(self).query(Statement).filter(Statement.phase == self).all()
-        users = {}
-        for statement in statements:
-            if statement.user.username not in users:
-                users[statement.user.username] = (datetime.datetime.fromtimestamp(0), None)
-            if statement.time >= users[statement.user.username][0]:
-                users[statement.user.username] = (statement.time, statement)
-        return None
-        #return sorted(filter(lambda x: x.value is not None, map(lambda (x, y): y, users.itervalues())), key=lambda x: x.time)
-
     def get_pretty_name(self):
         return self.moment.name + ' ' + self.date.strftime('%d/%m/%Y')
 
 class Statement(Base):
     __tablename__ = 'statements'
     __table_args__ = (
-        UniqueConstraint('user_id', 'phase_id', 'time'),
+        UniqueConstraint('user_id', 'phase_id'),
         )
 
     id = Column(Integer, primary_key=True)
@@ -159,9 +149,13 @@ class Statement(Base):
     phase_id = Column(Integer, ForeignKey(Phase.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
     time = Column(DateTime, nullable=False)
     value = Column(Unicode, nullable=True)
+    choice = Column(Boolean, nullable=True)
 
     user = relationship(User)
     phase = relationship(Phase)
+
+    def get_pretty_name(self):
+        return self.user.get_pretty_name() + ((' (' + self.value + ')') if self.value is not None else '')
 
 class SessionGen(object):
     """This allows us to create handy local sessions simply with:

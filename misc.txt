@@ -1,0 +1,16 @@
+Description:
+Let your relatives know if you'll be dining home or not!
+
+About:
+Let your relatives know if you'll be dining home or not!
+
+Botpic:
+botpic.jpeg
+
+Commands:
+join - Join a circle
+leave - Leave the current circle
+present - Say you will be present
+absent - Say you will be absent
+status - Get the current status
+
