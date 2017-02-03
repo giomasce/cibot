@@ -14,7 +14,7 @@ def handle_start(bot, update):
         if circle is None:
             bot.send_message(chat_id=update.message.chat_id, text="You do not have a circle yet!")
         else:
-            phase = Phase.get_current(circle)
+            phase = circle.get_current_phase()
             bot.send_message(chat_id=update.message.chat_id, text="Your circle is {}".format(circle.name))
             bot.send_message(chat_id=update.message.chat_id, text="Now is {}".format(phase.get_pretty_name()))
 

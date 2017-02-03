@@ -6,6 +6,7 @@ from sqlalchemy.orm import sessionmaker, relationship, backref
 from sqlalchemy.schema import Index
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.orm import session as sessionlib
+from sqlalchemy.orm.session import object_session
 
 import datetime
 
@@ -16,15 +17,37 @@ Base = declarative_base(db)
 def create_db():
     Base.metadata.create_all(db)
 
-MOMENTS = [('colazione', datetime.time(0)),
-           ('pranzo', datetime.time(11)),
-           ('cena', datetime.time(15))]
-
 class Circle(Base):
     __tablename__ = 'circles'
 
     id = Column(Integer, primary_key=True)
     name = Column(Unicode, unique=True, nullable=False)
+
+    def get_current_phase(self, when=None):
+        if when is None:
+            when = datetime.datetime.now()
+        moment = self.moments[-1]
+        prev_date = True
+        for moment2 in self.moments:
+            if moment2.time <= when.time():
+                moment = moment2
+                prev_date = False
+            else:
+                break
+        date = when.date()
+        if prev_date:
+            date -= datetime.timedelta(days=1)
+        session = object_session(self)
+        try:
+            phase = session.query(Phase).filter(Phase.date == date). \
+                filter(Phase.moment == moment).one()
+        except NoResultFound:
+            phase = Phase()
+            phase.date = date
+            phase.moment = moment
+            session.add(phase)
+
+        return phase
 
 class Moment(Base):
     __tablename__ = 'moments'
@@ -123,28 +146,7 @@ class Phase(Base):
         #return sorted(filter(lambda x: x.value is not None, map(lambda (x, y): y, users.itervalues())), key=lambda x: x.time)
 
     def get_pretty_name(self):
-        return MOMENTS[self.moment][0] + ' ' + self.date.strftime('%d/%m/%Y')
-
-    @classmethod
-    def get_current(cls, circle, when=None):
-        if when is None:
-            when = datetime.datetime.now()
-        moment = None
-        for mom in circle.moments:
-            pass
-        for mom_idx, (mom_name, mom_time) in enumerate(MOMENTS):
-            if mom_time <= when.time():
-                moment = mom_idx
-        try:
-            phase = session.query(Phase).filter(Phase.date == when.date()). \
-                filter(Phase.moment == moment).one()
-        except NoResultFound:
-            phase = Phase()
-            phase.date = when.date()
-            phase.moment = moment
-            session.add(phase)
-
-        return phase
+        return self.moment.name + ' ' + self.date.strftime('%d/%m/%Y')
 
 class Statement(Base):
     __tablename__ = 'statements'
