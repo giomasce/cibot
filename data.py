@@ -69,6 +69,7 @@ class Circle(Base):
         phase = self.get_current_phase(when=when)
         session = object_session(self)
         statements = session.query(Statement).join(User).filter(User.circle == self).filter(Statement.phase == phase).all()
+        #statements = session.query(User).outerjoin(Statement).filter(User.circle == self).filter(Statement.phase == phase).all()
         return statements
 
 class Moment(Base):

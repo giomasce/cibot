@@ -3,7 +3,9 @@
 
 from telegram import ReplyKeyboardMarkup
 from telegram.ext import Updater, CommandHandler, MessageHandler, Filters
+from telegram.ext.jobqueue import Job
 import logging
+import datetime
 
 from data import SessionGen, create_db, User, Phase, Statement, Circle, Moment
 
@@ -38,7 +40,7 @@ def handle_start(bot, update):
         custom_keyboard = [['/present', '/absent'],
                            ['/status']]
         reply_markup = ReplyKeyboardMarkup(custom_keyboard)
-        bot.sendMessage(chat_id=update.message.chat_id, reply_markup=reply_markup)
+        bot.sendMessage(chat_id=update.message.chat_id, reply_markup=reply_markup, text="Welcome!")
 
 def handle_join(bot, update, args):
     with SessionGen(True) as session:
@@ -179,7 +181,7 @@ def handle_status(bot, update):
                     message += "\n".join([u.get_pretty_name() for u in users])
             bot.send_message(chat_id=update.message.chat_id, text=message)
 
-        bot.send_message(chat_id=update.message.chat_id, text="Known total is {}".format(sum[st.choice for st in presents]))
+        bot.send_message(chat_id=update.message.chat_id, text="Known total is {}".format(sum([st.choice for st in presents])))
         send_list('Present', presents)
         send_list('Absent', absents)
         send_list('Unknown', unknowns)
@@ -216,14 +218,14 @@ def main():
 
     # Install handlers
     handlers = [
-        ('start', start_handler, {}),
-        ('join', join_handler, {"pass_args": True}),
-        ('leave', leave_handler, {}),
-        ('present', leave_handler, {}),
-        ('absent', leave_handler, {}),
-        ('next_present', leave_handler, {}),
-        ('next_absent', leave_handler, {}),
-        ('status', leave_handler, {}),
+        ('start', handle_start, {}),
+        ('join', handle_join, {"pass_args": True}),
+        ('leave', handle_leave, {}),
+        ('present', handle_present, {}),
+        ('absent', handle_absent, {}),
+        ('next_present', handle_next_present, {}),
+        ('next_absent', handle_next_absent, {}),
+        ('status', handle_status, {}),
     ]
     for handler_data in handlers:
         handler = CommandHandler(handler_data[0], handler_data[1], **handler_data[2])
@@ -236,7 +238,8 @@ def main():
     with SessionGen(False) as session:
         for circle in session.query(Circle):
             for moment in circle.moments:
-                updater.job_queue.run_repeating(handle_reminder_job, interval=datetime.timedelta(days=1), first=moment.reminder_time, context=moment)
+                job = Job(handle_reminder_job, interval=datetime.timedelta(days=1), repeat=True, context=moment)
+                #updater.job_queue.put(job, next_t=moment.reaminder_time)
 
     # Start main cycle
     updater.start_polling()
