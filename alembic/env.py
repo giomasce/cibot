@@ -35,7 +35,8 @@ def run_migrations_offline():
     script output.
 
     """
-    url = config.get_main_option("sqlalchemy.url")
+    #url = config.get_main_option("sqlalchemy.url")
+    url = open("database_url").read().strip()
     context.configure(
         url=url, target_metadata=target_metadata, literal_binds=True)
 
