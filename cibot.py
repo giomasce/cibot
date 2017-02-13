@@ -167,6 +167,8 @@ def handle_status(bot, update):
         absents = [st for st in statements if st.choice is not None and st.choice == 0]
         unknowns = [st for st in statements if st.choice is None]
 
+        nonvoters = circle.get_current_nonvoters()
+
         def send_list(desc, statements, users=None):
             if users is None:
                 users = []
@@ -184,7 +186,7 @@ def handle_status(bot, update):
         bot.send_message(chat_id=update.message.chat_id, text="Known total is {}".format(sum([st.choice for st in presents])))
         send_list('Present', presents)
         send_list('Absent', absents)
-        send_list('Unknown', unknowns)
+        send_list('Unknown', unknowns, nonvoters)
         if circle.bottom_line is not None:
             bot.send_message(chat_id=update.message.chat_id, text=circle.bottom_line)
 

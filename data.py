@@ -72,6 +72,19 @@ class Circle(Base):
         #statements = session.query(User).outerjoin(Statement).filter(User.circle == self).filter(Statement.phase == phase).all()
         return statements
 
+    def get_current_nonvoters(self, when=None):
+        if when is None:
+            when = datetime.datetime.now()
+        phase = self.get_current_phase(when=when)
+        session = object_session(self)
+        # TODO - Use a real query
+        users = session.query(User).filter(User.circle == self).all()
+        nonvoters = []
+        for user in users:
+            if user.get_current_statement(when=when) is None:
+                nonvoters.append(user)
+        return nonvoters
+
 class Moment(Base):
     __tablename__ = 'moments'
     __table_args__ = (
@@ -119,10 +132,13 @@ class User(Base):
         try:
             statement = session.query(Statement).filter(Statement.user == self).filter(Statement.phase == phase).one()
         except NoResultFound:
-            statement = Statement()
-            statement.user = self
-            statement.phase = phase
-            session.add(statement)
+            if for_update:
+                statement = Statement()
+                statement.user = self
+                statement.phase = phase
+                session.add(statement)
+            else:
+                statement = None
 
         if for_update:
             statement.time = when
