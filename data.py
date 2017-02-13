@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from sqlalchemy import create_engine, Column, Integer, ForeignKey, DateTime, UniqueConstraint, Boolean, Date, Unicode, Time
+from sqlalchemy import create_engine, Column, Integer, ForeignKey, DateTime, UniqueConstraint, Boolean, Date, Unicode, Time, text
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker, relationship, backref
 from sqlalchemy.schema import Index
@@ -19,10 +19,13 @@ def create_db():
 
 class Circle(Base):
     __tablename__ = 'circles'
+    __table_args__ = (
+        UniqueConstraint('name', name="const_circle_name"),
+    )
 
     id = Column(Integer, primary_key=True)
-    name = Column(Unicode, unique=True, nullable=False)
-    can_join = Column(Boolean, nullable=False, default=True)
+    name = Column(Unicode, nullable=False)
+    can_join = Column(Boolean, nullable=False, default=True, server_default=text('true'))
     join_code = Column(Unicode, nullable=True)
     bottom_line = Column(Unicode, nullable=True)
 
@@ -71,12 +74,12 @@ class Circle(Base):
 class Moment(Base):
     __tablename__ = 'moments'
     __table_args__ = (
-        UniqueConstraint('circle_id', 'name'),
-        UniqueConstraint('circle_id', 'time'),
-        )
+        UniqueConstraint('circle_id', 'name', name="const_moment_circle_name"),
+        UniqueConstraint('circle_id', 'time', name="const_moment_circle_time"),
+    )
 
     id = Column(Integer, primary_key=True)
-    circle_id = Column(Integer, ForeignKey(Circle.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=True)
+    circle_id = Column(Integer, ForeignKey(Circle.id, onupdate="CASCADE", ondelete="CASCADE", name="fk_moment_circle"), nullable=True)
     name = Column(Unicode)
     time = Column(Time)
     reminder_time = Column(Time)
@@ -85,17 +88,20 @@ class Moment(Base):
 
 class User(Base):
     __tablename__ = 'users'
+    __table_args__ = (
+        UniqueConstraint('tid', name="const_user_tid"),
+    )
 
     id = Column(Integer, primary_key=True)
-    circle_id = Column(Integer, ForeignKey(Circle.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=True)
-    tid = Column(Integer, unique=True, nullable=False)
+    circle_id = Column(Integer, ForeignKey(Circle.id, onupdate="CASCADE", ondelete="CASCADE", name="fk_user_circle"), nullable=True)
+    tid = Column(Integer, nullable=False)
     first_name = Column(Unicode)
     last_name = Column(Unicode)
     username = Column(Unicode)
-    enabled = Column(Boolean, nullable=False, default=True)
+    enabled = Column(Boolean, nullable=False, default=True, server_default=text('true'))
     default_choice = Column(Boolean, nullable=True)
-    reminder = Column(Boolean, nullable=False, default=False)
-    loud = Column(Boolean, nullable=False, default=False)
+    reminder = Column(Boolean, nullable=False, default=False, server_default=text('false'))
+    loud = Column(Boolean, nullable=False, default=False, server_default=text('false'))
 
     circle = relationship(Circle, backref="members")
 
@@ -140,12 +146,12 @@ class User(Base):
 class Phase(Base):
     __tablename__ = 'phases'
     __table_args__ = (
-        UniqueConstraint('date', 'moment_id'),
+        UniqueConstraint('date', 'moment_id', name="const_phase_date_moment"),
         )
 
     id = Column(Integer, primary_key=True)
     date = Column(Date, nullable=False)
-    moment_id = Column(Integer, ForeignKey(Moment.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
+    moment_id = Column(Integer, ForeignKey(Moment.id, onupdate="CASCADE", ondelete="CASCADE", name="fk_phase_moment"), nullable=False)
 
     moment = relationship(Moment)
 
@@ -155,12 +161,12 @@ class Phase(Base):
 class Statement(Base):
     __tablename__ = 'statements'
     __table_args__ = (
-        UniqueConstraint('user_id', 'phase_id'),
+        UniqueConstraint('user_id', 'phase_id', name="const_statement_user_phase"),
         )
 
     id = Column(Integer, primary_key=True)
-    user_id = Column(Integer, ForeignKey(User.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
-    phase_id = Column(Integer, ForeignKey(Phase.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
+    user_id = Column(Integer, ForeignKey(User.id, onupdate="CASCADE", ondelete="CASCADE", name="fk_statement_user"), nullable=False)
+    phase_id = Column(Integer, ForeignKey(Phase.id, onupdate="CASCADE", ondelete="CASCADE", name="fk_statement_phase"), nullable=False)
     time = Column(DateTime, nullable=False)
     comment = Column(Unicode, nullable=True)
     choice = Column(Integer, nullable=True)
