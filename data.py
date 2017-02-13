@@ -26,8 +26,8 @@ class Circle(Base):
     id = Column(Integer, primary_key=True)
     name = Column(Unicode, nullable=False)
     can_join = Column(Boolean, nullable=False, default=True, server_default=text('true'))
-    join_code = Column(Unicode, nullable=True)
-    bottom_line = Column(Unicode, nullable=True)
+    join_code = Column(Unicode, nullable=True, default=None, server_default=text('null'))
+    bottom_line = Column(Unicode, nullable=True, default=None, server_default=text('null'))
 
     def get_current_phase(self, when=None, successive=False):
         if when is None:
@@ -99,7 +99,7 @@ class User(Base):
     last_name = Column(Unicode)
     username = Column(Unicode)
     enabled = Column(Boolean, nullable=False, default=True, server_default=text('true'))
-    default_choice = Column(Boolean, nullable=True)
+    default_choice = Column(Boolean, nullable=True, default=None, server_default=text('null'))
     reminder = Column(Boolean, nullable=False, default=False, server_default=text('false'))
     loud = Column(Boolean, nullable=False, default=False, server_default=text('false'))
 
@@ -168,8 +168,8 @@ class Statement(Base):
     user_id = Column(Integer, ForeignKey(User.id, onupdate="CASCADE", ondelete="CASCADE", name="fk_statement_user"), nullable=False)
     phase_id = Column(Integer, ForeignKey(Phase.id, onupdate="CASCADE", ondelete="CASCADE", name="fk_statement_phase"), nullable=False)
     time = Column(DateTime, nullable=False)
-    comment = Column(Unicode, nullable=True)
-    choice = Column(Integer, nullable=True)
+    comment = Column(Unicode, nullable=True, default=None, server_default=text('null'))
+    choice = Column(Integer, nullable=True, default=None, server_default=text('null'))
 
     user = relationship(User)
     phase = relationship(Phase)
