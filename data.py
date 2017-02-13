@@ -22,17 +22,28 @@ class Circle(Base):
 
     id = Column(Integer, primary_key=True)
     name = Column(Unicode, unique=True, nullable=False)
+    can_join = Column(Boolean, nullable=False, default=True)
+    join_code = Column(Unicode, nullable=True)
+    bottom_line = Column(Unicode, nullable=True)
 
-    def get_current_phase(self, when=None):
+    def get_current_phase(self, when=None, successive=False):
         if when is None:
             when = datetime.datetime.now()
-        moment = self.moments[-1]
-        prev_date = True
+        if successive:
+            moment = self.moments[0]
+            prev_date = False
+        else:
+            moment = self.moments[-1]
+            prev_date = True
         for moment2 in self.moments:
             if moment2.time <= when.time():
-                moment = moment2
-                prev_date = False
+                if not successive:
+                    moment = moment2
+                    prev_date = False
             else:
+                if successive:
+                    moment = moment2
+                    prev_date = False
                 break
         date = when.date()
         if prev_date:
@@ -68,6 +79,7 @@ class Moment(Base):
     circle_id = Column(Integer, ForeignKey(Circle.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=True)
     name = Column(Unicode)
     time = Column(Time)
+    reminder_time = Column(Time)
 
     circle = relationship(Circle, backref=backref("moments", order_by="Moment.time"))
 
@@ -82,18 +94,20 @@ class User(Base):
     username = Column(Unicode)
     enabled = Column(Boolean, nullable=False, default=True)
     default_choice = Column(Boolean, nullable=True)
+    reminder = Column(Boolean, nullable=False, default=False)
+    loud = Column(Boolean, nullable=False, default=False)
 
     circle = relationship(Circle, backref="members")
 
     def get_pretty_name(self):
         return self.first_name + ' ' + self.last_name
 
-    def get_current_statement(self, when=None, for_update=False):
+    def get_current_statement(self, when=None, for_update=False, successive=False):
         if when is None:
             when = datetime.datetime.now()
         if self.circle is None:
             return None
-        phase = self.circle.get_current_phase(when=when)
+        phase = self.circle.get_current_phase(when=when, successive=False)
         session = object_session(self)
         try:
             statement = session.query(Statement).filter(Statement.user == self).filter(Statement.phase == phase).one()
@@ -148,14 +162,14 @@ class Statement(Base):
     user_id = Column(Integer, ForeignKey(User.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
     phase_id = Column(Integer, ForeignKey(Phase.id, onupdate="CASCADE", ondelete="CASCADE"), nullable=False)
     time = Column(DateTime, nullable=False)
-    value = Column(Unicode, nullable=True)
-    choice = Column(Boolean, nullable=True)
+    comment = Column(Unicode, nullable=True)
+    choice = Column(Integer, nullable=True)
 
     user = relationship(User)
     phase = relationship(Phase)
 
     def get_pretty_name(self):
-        return self.user.get_pretty_name() + ((' (' + self.value + ')') if self.value is not None else '')
+        return self.user.get_pretty_name() + (('+{}'.format(self.choice-1)) if self.choice is not None and self.choice > 1 else '') + ((' (' + self.comment + ')') if self.comment is not None else '')
 
 class SessionGen(object):
     """This allows us to create handy local sessions simply with:

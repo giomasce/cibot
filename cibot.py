@@ -13,11 +13,11 @@ def get_user(session, update):
         return None
     return user
 
-def get_user_and_statement(session, update, for_update=False):
+def get_user_and_statement(session, update, for_update=False, successive=False):
     user = get_user(session, update)
     if user is None:
         return None, None
-    statement = user.get_current_statement(for_update=for_update)
+    statement = user.get_current_statement(for_update=for_update, successive=successive)
     return user, statement
 
 def handle_start(bot, update):
@@ -46,7 +46,7 @@ def handle_join(bot, update, args):
         if user is None:
             return
 
-        if len(args) != 1:
+        if len(args) < 1:
             bot.send_message(chat_id=update.message.chat_id, text="You have to specify a circle")
             return
         circle_name = args[0]
@@ -55,8 +55,24 @@ def handle_join(bot, update, args):
         if circle is None:
             bot.send_message(chat_id=update.message.chat_id, text="Circle {} does not exist!".format(circle_name))
             return
-        user.circle = circle
-        bot.send_message(chat_id=update.message.chat_id, text="You just joined circle {}".format(circle.name))
+
+        # Verify authorization
+        if not circle.can_join:
+            bot.send_message(chat_id=update.message.chat_id, text="Circle {} cannot be joined".format(circle_name))
+            return
+        if circle.join_code is not None:
+            if len(args) < 2:
+                bot.send_message(chat_id=update.message.chat_id, text="You have to specify a code to join circle {}".format(circle_name))
+                return
+            code = args[1]
+            if code != circle.join_code:
+                bot.send_message(chat_id=update.message.chat_id, text="The code is invalid".format(circle_name))
+                return
+
+        # Verify positively authorization as a precaution
+        if circle.can_join and (circle.join_code is None or circle.join_code == code):
+            user.circle = circle
+            bot.send_message(chat_id=update.message.chat_id, text="You just joined circle {}".format(circle.name))
 
 def handle_leave(bot, update):
     with SessionGen(True) as session:
@@ -81,8 +97,13 @@ def handle_present(bot, update):
             bot.send_message(chat_id=update.message.chat_id, text="You have to join a circle before expressing your presence!")
             return
 
-        statement.choice = True
+        statement.choice = 1
         bot.send_message(chat_id=update.message.chat_id, text="We'll be happy to see you!")
+
+        if False:
+            for user2 in user.circle:
+                if user2.loud and user2 != user:
+                    bot.send_message(chat_id=user2.tid, text="{} just reported to be present".format(user.get_pretty_name()))
 
 def handle_absent(bot, update):
     with SessionGen(True) as session:
@@ -94,7 +115,38 @@ def handle_absent(bot, update):
             bot.send_message(chat_id=update.message.chat_id, text="You have to join a circle before expressing your presence!")
             return
 
-        statement.choice = False
+        statement.choice = 0
+        bot.send_message(chat_id=update.message.chat_id, text="So sorry you won't be dining with us!")
+
+        if False:
+            for user2 in user.circle:
+                if user2.loud and user2 != user:
+                    bot.send_message(chat_id=user2.tid, text="{} just reported to be absent".format(user.get_pretty_name()))
+
+def handle_next_present(bot, update):
+    with SessionGen(True) as session:
+        user, statement = get_user_and_statement(session, update, for_update=True, successive=True)
+        if user is None:
+            return
+
+        if statement is None:
+            bot.send_message(chat_id=update.message.chat_id, text="You have to join a circle before expressing your presence!")
+            return
+
+        statement.choice = 1
+        bot.send_message(chat_id=update.message.chat_id, text="We'll be happy to see you!")
+
+def handle_next_absent(bot, update):
+    with SessionGen(True) as session:
+        user, statement = get_user_and_statement(session, update, for_update=True, successive=True)
+        if user is None:
+            return
+
+        if statement is None:
+            bot.send_message(chat_id=update.message.chat_id, text="You have to join a circle before expressing your presence!")
+            return
+
+        statement.choice = 0
         bot.send_message(chat_id=update.message.chat_id, text="So sorry you won't be dining with us!")
 
 def handle_status(bot, update):
@@ -109,20 +161,30 @@ def handle_status(bot, update):
             return
 
         statements = circle.get_current_statements()
-        presents = [st for st in statements if st.choice is True]
-        absents = [st for st in statements if st.choice is False]
+        presents = [st for st in statements if st.choice is not None and st.choice > 0]
+        absents = [st for st in statements if st.choice is not None and st.choice == 0]
         unknowns = [st for st in statements if st.choice is None]
 
-        def send_list(desc, statements):
-            message = "{} ({})".format(desc, len(statements))
-            if len(statements) > 0:
-                message += ":\n"
-                message += "\n".join([st.get_pretty_name() for st in statements])
+        def send_list(desc, statements, users=None):
+            if users is None:
+                users = []
+            message = "{} ({})".format(desc, len(statements) + len(users))
+            if len(statements) + len(users) > 0:
+                message += ":"
+                if len(statements) > 0:
+                    message += "\n"
+                    message += "\n".join([st.get_pretty_name() for st in statements])
+                if len(users) > 0:
+                    message += "\n"
+                    message += "\n".join([u.get_pretty_name() for u in users])
             bot.send_message(chat_id=update.message.chat_id, text=message)
 
+        bot.send_message(chat_id=update.message.chat_id, text="Known total is {}".format(sum[st.choice for st in presents]))
         send_list('Present', presents)
         send_list('Absent', absents)
         send_list('Unknown', unknowns)
+        if circle.bottom_line is not None:
+            bot.send_message(chat_id=update.message.chat_id, text=circle.bottom_line)
 
 def handle_message(bot, update):
     with SessionGen(True) as session:
@@ -134,8 +196,16 @@ def handle_message(bot, update):
             bot.send_message(chat_id=update.message.chat_id, text="You have to join a circle before expressing your presence!")
             return
 
-        statement.value = update.message.text
+        statement.comment = update.message.text
         bot.send_message(chat_id=update.message.chat_id, text="Thanks for your precious message!")
+
+def handle_reminder_job(bot, job):
+    with SessionGen(False) as session:
+        moment = job.context
+        circle = moment.circle
+        for user in circle.members:
+            if user.loud and user.get_current_statement().choice is None:
+                bot.send_message(chat_id=user.tid, text="Remember to say everybody if you'll be dining home or not!")
 
 def main():
     create_db()
@@ -144,20 +214,29 @@ def main():
     token = open('telegram_token').read().strip()
     updater = Updater(token=token)
 
-    start_handler = CommandHandler('start', handle_start)
-    updater.dispatcher.add_handler(start_handler)
-    join_handler = CommandHandler('join', handle_join, pass_args=True)
-    updater.dispatcher.add_handler(join_handler)
-    leave_handler = CommandHandler('leave', handle_leave)
-    updater.dispatcher.add_handler(leave_handler)
-    present_handler = CommandHandler('present', handle_present)
-    updater.dispatcher.add_handler(present_handler)
-    absent_handler = CommandHandler('absent', handle_absent)
-    updater.dispatcher.add_handler(absent_handler)
-    status_handler = CommandHandler('status', handle_status)
-    updater.dispatcher.add_handler(status_handler)
+    # Install handlers
+    handlers = [
+        ('start', start_handler, {}),
+        ('join', join_handler, {"pass_args": True}),
+        ('leave', leave_handler, {}),
+        ('present', leave_handler, {}),
+        ('absent', leave_handler, {}),
+        ('next_present', leave_handler, {}),
+        ('next_absent', leave_handler, {}),
+        ('status', leave_handler, {}),
+    ]
+    for handler_data in handlers:
+        handler = CommandHandler(handler_data[0], handler_data[1], **handler_data[2])
+        updater.dispatcher.add_handler(handler)
     message_handler = MessageHandler(Filters.text, handle_message)
     updater.dispatcher.add_handler(message_handler)
+
+    # Install jobs
+    # TODO: update jobs when database is modified
+    with SessionGen(False) as session:
+        for circle in session.query(Circle):
+            for moment in circle.moments:
+                updater.job_queue.run_repeating(handle_reminder_job, interval=datetime.timedelta(days=1), first=moment.reminder_time, context=moment)
 
     # Start main cycle
     updater.start_polling()

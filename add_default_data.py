@@ -15,11 +15,12 @@ def main():
         circle = Circle()
         circle.name = "Famiglia"
         session.add(circle)
-        for x in [('cena', 15), ('pranzo', 22)]:
+        for x in [('cena', 15, 18), ('pranzo', 22, 11)]:
             moment = Moment()
             moment.circle = circle
             moment.name = x[0]
             moment.time = datetime.time(hour=x[1])
+            moment.reminder_time = datetime.time(hour=x[2])
             session.add(moment)
 
 if __name__ == '__main__':
