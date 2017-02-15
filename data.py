@@ -127,7 +127,7 @@ class User(Base):
             when = datetime.datetime.now()
         if self.circle is None:
             return None
-        phase = self.circle.get_current_phase(when=when, successive=False)
+        phase = self.circle.get_current_phase(when=when, successive=successive)
         session = object_session(self)
         try:
             statement = session.query(Statement).filter(Statement.user == self).filter(Statement.phase == phase).one()
