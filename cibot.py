@@ -22,6 +22,21 @@ def get_user_and_statement(session, update, for_update=False, successive=False):
     statement = user.get_current_statement(for_update=for_update, successive=successive)
     return user, statement
 
+def get_custom_keyboard():
+    custom_keyboard = [['/present', '/absent'],
+                       ['/next_present', '/next_absent'],
+                       ['/status']]
+    return custom_keyboard
+
+def recognize_bool(value):
+    value = value.lower()
+    if value in ['false', '0', 'no']:
+        return False
+    elif value in ['true', '1', 'yes']:
+        return True
+    else:
+        return None
+
 def handle_start(bot, update):
     with SessionGen(True) as session:
         db_user = get_user(session, update)
@@ -37,10 +52,11 @@ def handle_start(bot, update):
             bot.send_message(chat_id=update.message.chat_id, text="Your circle is {}".format(circle.name))
             bot.send_message(chat_id=update.message.chat_id, text="Now is {}".format(phase.get_pretty_name()))
 
-        custom_keyboard = [['/present', '/absent'],
-                           ['/status']]
-        reply_markup = ReplyKeyboardMarkup(custom_keyboard)
-        bot.sendMessage(chat_id=update.message.chat_id, reply_markup=reply_markup, text="Welcome!")
+        reply_markup = ReplyKeyboardMarkup(get_custom_keyboard())
+        if circle.bottom_line is not None:
+            bot.send_message(chat_id=update.message.chat_id, reply_markup=reply_markup, text=circle.bottom_line)
+        else:
+            bot.sendMessage(chat_id=update.message.chat_id, reply_markup=reply_markup, text="Welcome!")
 
 def handle_join(bot, update, args):
     with SessionGen(True) as session:
@@ -102,10 +118,9 @@ def handle_present(bot, update):
         statement.choice = 1
         bot.send_message(chat_id=update.message.chat_id, text="We'll be happy to see you!")
 
-        if False:
-            for user2 in user.circle:
-                if user2.loud and user2 != user:
-                    bot.send_message(chat_id=user2.tid, text="{} just reported to be present".format(user.get_pretty_name()))
+        for user2 in user.circle.members:
+            if user2.loud and user.id != user2.id:
+                bot.send_message(chat_id=user2.tid, text="{} just reported to be present".format(user.get_pretty_name()))
 
 def handle_absent(bot, update):
     with SessionGen(True) as session:
@@ -120,10 +135,9 @@ def handle_absent(bot, update):
         statement.choice = 0
         bot.send_message(chat_id=update.message.chat_id, text="So sorry you won't be dining with us!")
 
-        if False:
-            for user2 in user.circle:
-                if user2.loud and user2 != user:
-                    bot.send_message(chat_id=user2.tid, text="{} just reported to be absent".format(user.get_pretty_name()))
+        for user2 in user.circle.members:
+            if user2.loud and user.id != user2.id:
+                bot.send_message(chat_id=user2.tid, text="{} just reported to be absent".format(user.get_pretty_name()))
 
 def handle_next_present(bot, update):
     with SessionGen(True) as session:
@@ -138,6 +152,10 @@ def handle_next_present(bot, update):
         statement.choice = 1
         bot.send_message(chat_id=update.message.chat_id, text="We'll be happy to see you!")
 
+        for user2 in user.circle.members:
+            if user2.loud and user.id != user2.id:
+                bot.send_message(chat_id=user2.tid, text="{} just reported they will be present next time".format(user.get_pretty_name()))
+
 def handle_next_absent(bot, update):
     with SessionGen(True) as session:
         user, statement = get_user_and_statement(session, update, for_update=True, successive=True)
@@ -150,6 +168,10 @@ def handle_next_absent(bot, update):
 
         statement.choice = 0
         bot.send_message(chat_id=update.message.chat_id, text="So sorry you won't be dining with us!")
+
+        for user2 in user.circle.members:
+            if user2.loud and user.id != user2.id:
+                bot.send_message(chat_id=user2.tid, text="{} just reported they will be absent next time".format(user.get_pretty_name()))
 
 def handle_status(bot, update):
     with SessionGen(True) as session:
@@ -188,7 +210,35 @@ def handle_status(bot, update):
         send_list('Absent', absents)
         send_list('Unknown', unknowns, nonvoters)
         if circle.bottom_line is not None:
-            bot.send_message(chat_id=update.message.chat_id, text=circle.bottom_line)
+            reply_markup = ReplyKeyboardMarkup(get_custom_keyboard())
+            bot.send_message(chat_id=update.message.chat_id, reply_markup=reply_markup, text=circle.bottom_line)
+
+def handle_set(bot, update, args):
+    with SessionGen(True) as session:
+        user = get_user(session, update)
+        if user is None:
+            return
+
+        if len(args) != 2:
+            bot.send_message(chat_id=update.message.chat_id, text="Please tell me what to set and its new value!")
+
+        [key, value] = args
+        if key == 'loud':
+            value = recognize_bool(value)
+            if value is None:
+                bot.send_message(chat_id=update.message.chat_id, text="The value you selected could not be parsed")
+            else:
+                user.loud = value
+                bot.send_message(chat_id=update.message.chat_id, text="Good, your setting was stored!")
+        elif key == 'reminder':
+            value = recognize_bool(value)
+            if value is None:
+                bot.send_message(chat_id=update.message.chat_id, text="The value you selected could not be parsed")
+            else:
+                user.reminder = value
+                bot.send_message(chat_id=update.message.chat_id, text="Good, your setting was stored!")
+        else:
+            bot.send_message(chat_id=update.message.chat_id, text="The key you selected could not be parsed")
 
 def handle_message(bot, update):
     with SessionGen(True) as session:
@@ -202,6 +252,10 @@ def handle_message(bot, update):
 
         statement.comment = update.message.text
         bot.send_message(chat_id=update.message.chat_id, text="Thanks for your precious message!")
+
+        for user2 in user.circle.members:
+            if user2.loud and user.id != user2.id:
+                bot.send_message(chat_id=user2.tid, text="{} just set their new message: \"{}\"".format(user.get_pretty_name(), update.message.text))
 
 def handle_reminder_job(bot, job):
     with SessionGen(False) as session:
@@ -228,6 +282,7 @@ def main():
         ('next_present', handle_next_present, {}),
         ('next_absent', handle_next_absent, {}),
         ('status', handle_status, {}),
+        ('set', handle_set, {"pass_args": True}),
     ]
     for handler_data in handlers:
         handler = CommandHandler(handler_data[0], handler_data[1], **handler_data[2])

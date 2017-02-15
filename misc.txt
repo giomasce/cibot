@@ -12,5 +12,8 @@ join - Join a circle
 leave - Leave the current circle
 present - Say you will be present
 absent - Say you will be absent
+next_present - Say you will be present next time
+next_absent - Say you will be absent next time
+set - Set a configuration element
 status - Get the current status
 
