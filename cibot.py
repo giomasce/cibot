@@ -205,11 +205,11 @@ def handle_message(bot, update):
 
 def handle_reminder_job(bot, job):
     with SessionGen(False) as session:
-        moment = job.context
+        moment = session.query(Moment).filter(Moment.id == job.context).one()
         circle = moment.circle
         for user in circle.members:
-            if user.loud and user.get_current_statement().choice is None:
-                bot.send_message(chat_id=user.tid, text="Remember to say everybody if you'll be dining home or not!")
+            if user.reminder and user.get_current_statement() is None:
+                bot.send_message(chat_id=user.tid, text="We would REALLY like to know if you'll be eating with us or not!")
 
 def main():
     create_db()
@@ -240,8 +240,12 @@ def main():
     with SessionGen(False) as session:
         for circle in session.query(Circle):
             for moment in circle.moments:
-                job = Job(handle_reminder_job, interval=datetime.timedelta(days=1), repeat=True, context=moment)
-                #updater.job_queue.put(job, next_t=moment.reaminder_time)
+                job = Job(handle_reminder_job, interval=datetime.timedelta(days=1), repeat=True, context=moment.id)
+                next_datetime = datetime.datetime.combine(datetime.date.today(), moment.reminder_time)
+                if datetime.datetime.now() > next_datetime:
+                    next_datetime += datetime.timedelta(days=1)
+                next_t = (next_datetime - datetime.datetime.now()).total_seconds()
+                updater.job_queue.put(job, next_t=next_t)
 
     # Start main cycle
     updater.start_polling()
